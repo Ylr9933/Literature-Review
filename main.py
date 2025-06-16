@@ -69,7 +69,14 @@ def main():
         try:
             with st.spinner("正在生成文献综述..."):
                 logger.log("【阶段】开始生成文献综述")
-                summary = analysis_agent.generate_summary(papers)
+                
+                # 确保已经处理过papers并创建了vectorstore
+                if analysis_agent.vectorstore is None:
+                    analysis_agent.process_papers(st.session_state.papers)
+                
+                # 调用generate_summary时传入papers和query(topic)
+                summary = analysis_agent.generate_summary(papers=st.session_state.papers, query=topic)
+                
                 st.session_state.summary = summary
                 logger.log("【完成】文献综述生成完成")
         except Exception as e:

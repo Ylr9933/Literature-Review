@@ -25,7 +25,8 @@ class LiteratureAnalysisAgent:
             model_name="shibing624/text2vec-base-chinese"
         )
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        
+        self.vectorstore = None  # 初始化为空，在process_papers中填充
+
     def process_papers(self, papers):
         """处理论文数据并创建向量数据库"""
         documents = []
@@ -35,13 +36,23 @@ class LiteratureAnalysisAgent:
             chunks = self.text_splitter.split_text(content)
             documents.extend(chunks)
         
-        vectorstore = FAISS.from_texts(documents, self.embeddings)
-        return vectorstore
-    
-    def generate_summary(self, papers):
+        self.vectorstore = FAISS.from_texts(documents, self.embeddings)  # 存储vectorstore实例
+        
+    def generate_summary(self, papers, query):
         """生成文献综述"""
+        if not self.vectorstore:
+            raise ValueError("请先调用process_papers方法初始化向量数据库")
+        
+        # 检索与查询最相关的摘要
+        query_embedding = self.embeddings.embed_query(query)
+        relevant_docs = self.vectorstore.similarity_search_by_vector(query_embedding, k=5)  # 可根据需要调整k值
+        relevant_context = "\n".join([doc.page_content for doc in relevant_docs])
+        
         prompt_template = """
-        你是一个专业的科研助手，需要根据以下论文信息撰写文献综述：
+        你是一个专业的科研助手，需要根据以下论文信息和提供的上下文撰写文献综述：
+        
+        上下文：
+        {relevant_context}
         
         论文信息：
         {papers}
@@ -60,8 +71,8 @@ class LiteratureAnalysisAgent:
             papers_str += f"{i}. {paper['title']} ({paper['published']})\n"
             papers_str += f"   摘要: {paper['summary']}\n\n"
         
-        prompt = PromptTemplate(template=prompt_template, input_variables=["papers"])
-        final_prompt = prompt.format(papers=papers_str)
+        prompt = PromptTemplate(template=prompt_template, input_variables=["relevant_context", "papers"])
+        final_prompt = prompt.format(relevant_context=relevant_context, papers=papers_str)
         
         summary = call_qwen(final_prompt)
         return summary
